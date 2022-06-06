@@ -376,14 +376,55 @@ class TripsList(object):
                 for k in j:
                     classifications.extend(classification_data.conversionClassificationId(k[1], classification))
                 self.dynamic_profiles[i[0]].append((classifications, saison, duree, id))
-                id = id + 1   
+                id = id + 1
+
+    def dynamicProfilesWithoutClassification(self):
+        season = Seasonality()
+        self.dynamic_profiles_no_classification = {}
+        id = 0
+        for i in self.tourists_dynamic_profiles.items():
+            self.dynamic_profiles_no_classification[i[0]] = []
+            for j in i[1]:
+                classifications = []
+                saison = season.run(j[0][0])
+                duree = j[-1][0] - j[0][0]
+                for k in j:
+                    classifications.append(k[1])
+                self.dynamic_profiles_no_classification[i[0]].append((classifications, saison, duree, id))
+                id = id + 1      
                 
+    def topMonumentsCLuster(self, top, clusters, classification, region, date, a, b):
+        self.list_locations = {k:[] for k,v in clusters.items()}
+        self.list_tops = {k:[] for k,v in clusters.items()}
+        for k,v in clusters.items():
+            for i in self.dynamic_profiles_no_classification.values():
+                if (i[0][-1] in v):
+                    self.list_locations[k].extend(i[0][0])
+            for i in set(self.list_locations[k]):
+                self.list_tops[k].append((i, self.list_locations[k].count(i)))
+            self.list_tops[k].sort(key = lambda x: x[1], reverse=True)
+            self.list_tops[k] = self.list_tops[k][0:top]
+            tpm = []
+            for i in self.list_tops[k]:
+                tpm.append(list(classification[classification.id == i[0]].nom)[0])
+            self.list_tops[k] = tpm
+        self.list_tops = pd.DataFrame.from_dict(self.list_tops, orient = "columns")
+        print(self.list_tops) 
+        self.list_tops.to_csv("res/" + region + "/" + str(date) + "/" + str(a) + "_" + str(b) + "_top.csv", encoding="latin_1")
+
     def run(self, data, classification, threshold):
         self.touristsProfiles(data)
         self.tripsCreation()
         self.tripsOrganisation(threshold)
         self.dynamicProfiles(classification)
-        return self.dynamic_profiles 
+        return self.dynamic_profiles
+    
+    def getTop(self, data, threshold, top, clusters, classification, region, date, a, b):
+        self.touristsProfiles(data)
+        self.tripsCreation()
+        self.tripsOrganisation(threshold)
+        self.dynamicProfilesWithoutClassification()
+        self.topMonumentsCLuster(top, clusters, classification, region, date, a, b)
 
 class TripsDatabase(object):
     
@@ -822,8 +863,8 @@ class TPMAlgorithm(object):
         with open(path + file + "_summary.pkl", "wb") as tf:
             pick.dump(self.summary,tf)  
     
-    def openResults(self, a, b, distance_classification, distance_season, date, region):
-        file = input("Ouvrir summary ou clusters ?")
+    def openResults(self, a, b, distance_classification, distance_season, date, region, file):
+        #file = input("Ouvrir summary ou clusters ?")
         path = "res/" + region + "/" + str(date) + "/"
         file = str(a) + "_" + str(b) + "_" + distance_classification + "_" + distance_season + "_" + file + ".pkl"
         #file = "Hierarchical" + file + ".pkl"
@@ -924,78 +965,81 @@ if __name__ == '__main__':
     url_idf = 'data/Reviews_Ile_de_France.csv'
     url_hdf = 'data/Reviews_Hauts_de_France.csv'
 
-    #region = "Hauts_de_France"  
-    region = "Ile_de_France"
+    region = "Hauts_de_France"  
+    #region = "Ile_de_France"
     #   
     # NOMBRE DE COMMENTAIRES MINIMUM POUR QU'UN TOURISTE SOIT CONSIDERE
     limite_commentaires = 4
     breakdown_natio = "False"
-    breakdown_date = "True"
+    breakdown_date = "False"
     natio = None
-    date = 2017
+    date = 2008
+    clusters = algo.openResults(a = 0.8, b = 0.2, distance_classification= "euclidean", distance_season="discrete", date = "2015-2018", region = region, file = "clusters")
+    print(clusters)
 
     # LIMITE DE MONUMENTS A CONSIDERER
     seuil = 20
-    top = database.run(limite_commentaires, breakdown_natio, breakdown_date, date, natio, seuil, url_idf)
+    top = database.run(limite_commentaires, breakdown_natio, breakdown_date, date, natio, seuil, url = url_hdf)
     database_classification = classification.run(top)
     data = database.locationsDatabase(database_classification)    
     #threshold = int(input("Quelle est la limite de jour pour un voyage ?"))
     threshold = 7
 
-    list_trips = trips.run(data, database_classification, threshold)
-    list_trips = database.tripsDatabase(list_trips, classification)   
-    list_static = static.run(data)
+    list_trips = trips.getTop(data, threshold, 10, clusters, database_classification, region, date = "2015-2018", a = 0.8, b = 0.2)
+#     list_trips = trips.run(data, database_classification, threshold)
+#     list_trips = database.tripsDatabase(list_trips, classification)   
+#     list_static = static.run(data)
     
-    '''
-    distance_classification = input("Quelle est la distance entre les vecteurs de classification : euclidean ou cosine ?")
-    distance_season = input("Quelle est la distance entre les saisons : discrete ou graph ?")
-    '''
+#     '''
+#     distance_classification = input("Quelle est la distance entre les vecteurs de classification : euclidean ou cosine ?")
+#     distance_season = input("Quelle est la distance entre les saisons : discrete ou graph ?")
+#     '''
 
-    distance_classification = "euclidean"
-    distance_season = "discrete"
+#     distance_classification = "euclidean"
+#     distance_season = "discrete"
 
-    '''
-    a = float(input("Quelle est la valeur du paramètre a ?"))
-    b = float(input("Quelle est la valeur du paramètre b ?"))
-    '''
+#     '''
+#     a = float(input("Quelle est la valeur du paramètre a ?"))
+#     b = float(input("Quelle est la valeur du paramètre b ?"))
+#     '''
 
-    a = 0.8
-    b = 0.2
-    #k = 7
-    data, data_num, list_trips_norm = df.database_voyages(list_trips)
+#     a = 0.8
+#     b = 0.2
+#     #k = 7
+#     data, data_num, list_trips_norm = df.database_voyages(list_trips)
 
-# Number of clusters ####################
+# # Number of clusters ####################
     
-    r_tril = tpm.distanceMatrix(list_trips_norm, a, b, distance_classification, distance_season) 
-    k, internal = measures.numberClusters(a, b, distance_classification, distance_season, date, region, data_num)    
-    print(internal)
+#     r_tril = tpm.distanceMatrix(list_trips_norm, a, b, distance_classification, distance_season) 
+#     k, internal = measures.numberClusters(a, b, distance_classification, distance_season, date, region, data_num)    
+#     print(internal)
     
-#################### 
+# #################### 
 
-# Intrication ####################
+# # Intrication ####################
 
-    #tpm.entanglement(list_trips_norm, distance_classification, distance_season, date, region)
+#     #tpm.entanglement(list_trips_norm, distance_classification, distance_season, date, region)
 
-####################
+# ####################
 
-# Algorithmes usuels ####################
+# # Algorithmes usuels ####################
 
-    ''' 
-    kmeans = KMeansClustering()
-    groups = kmeans.kmeans_clustering(data_num, k)
-    kprotos = KPrototypesClustering()
-    groups = kprotos.kprototypes_clustering(data_num, k)
-    hierarchical = HierarchicalClustering()
-    groups = hierarchical.hierarchical_clustering(data_num, k)
-    algo.run(list_trips, list_static, a, b, distance_classification, distance_season, date, region, groups)
-    '''  
+#     ''' 
+#     kmeans = KMeansClustering()
+#     groups = kmeans.kmeans_clustering(data_num, k)
+#     kprotos = KPrototypesClustering()
+#     groups = kprotos.kprototypes_clustering(data_num, k)
+#     hierarchical = HierarchicalClustering()
+#     groups = hierarchical.hierarchical_clustering(data_num, k)
+#     algo.run(list_trips, list_static, a, b, distance_classification, distance_season, date, region, groups)
+#     '''  
 
-####################
+# ####################
 
 
-# TPM Algorithme ####################
+# # TPM Algorithme ####################
     
-    r_groups = tpm.run(list_trips_norm, a, b, distance_classification, distance_season, date, region, k)
-    algo.run(list_trips, list_static, a, b, distance_classification, distance_season, date, region, r_groups)
+#     r_groups = tpm.run(list_trips_norm, a, b, distance_classification, distance_season, date, region, k)
+#     algo.run(list_trips, list_static, a, b, distance_classification, distance_season, date, region, r_groups)
     
-####################    
+# ####################    
